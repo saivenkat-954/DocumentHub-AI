@@ -9,6 +9,8 @@ import ReactMarkdown from "react-markdown";
 
 import "./App.css";
 
+const API_URL = "https://documenthub-ai-backend.onrender.com";
+
 function App() {
   const [file, setFile] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -26,7 +28,7 @@ function App() {
     const loadDocuments = async () => {
       try {
         const response = await fetch(
-          "http://127.0.0.1:8000/documents"
+          `${API_URL}/documents`
         );
 
         const data = await response.json();
@@ -122,7 +124,7 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/documents/upload",
+        `${API_URL}/documents/upload`,
         {
           method: "POST",
           body: formData,
@@ -203,7 +205,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/documents?filename=${encodeURIComponent(
+        `${API_URL}/documents?filename=${encodeURIComponent(
           filename
         )}`,
         {
@@ -272,15 +274,13 @@ function App() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/ask",
+        `${API_URL}/ask`,
         {
           method: "POST",
-
           headers: {
             "Content-Type":
               "application/json",
           },
-
           body: JSON.stringify({
             question:
               trimmedQuestion,
