@@ -1,0 +1,8 @@
+venv/
+backend/.env
+backend/venv/
+backend/__pycache__/
+backend/uploads/
+backend/chroma_db/
+frontend-react/node_modules/
+frontend-react/dist/
