@@ -324,7 +324,7 @@ The goal of DocumentHub AI is to demonstrate how modern AI applications can comb
 
 Author
 
-Sai Venkat
+Bommidi Poorna Chandra Sai Venkat
 
 GitHub:
 
