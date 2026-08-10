@@ -1,15 +1,39 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import ReactMarkdown from "react-markdown";
-
 import "./App.css";
 
 const API_URL = "https://documenthub-ai-backend.onrender.com";
+
+function Logo({ size = 48 }) {
+  return (
+    <svg
+      className="brand-logo"
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="logoGradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#7c6cff" />
+          <stop offset="100%" stopColor="#4f46e5" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="16" fill="#10152f" />
+      <rect x="14" y="13" width="25" height="32" rx="3" fill="url(#logoGradient)" />
+      <rect x="25" y="20" width="25" height="32" rx="3" fill="#55d6be" />
+      <rect x="19" y="27" width="25" height="32" rx="3" fill="#6366f1" />
+      <path
+        d="M27 36h13M27 41h10M27 46h7"
+        stroke="white"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 function App() {
   const [file, setFile] = useState(null);
@@ -21,31 +45,31 @@ function App() {
   const [deletingFile, setDeletingFile] = useState("");
   const [dragging, setDragging] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem("documenthub-theme") || "dark";
+  });
 
   const chatEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("documenthub-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     const loadDocuments = async () => {
       try {
-        const response = await fetch(
-          `${API_URL}/documents`
-        );
-
+        const response = await fetch(`${API_URL}/documents`);
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(
-            data.detail ||
-            "Failed to load documents."
-          );
+          throw new Error(data.detail || "Failed to load documents.");
         }
 
         setDocuments(data.documents || []);
       } catch (error) {
-        console.error(
-          "Failed to load documents:",
-          error
-        );
+        setUploadStatus(`Error: ${error.message}`);
       }
     };
 
@@ -66,22 +90,15 @@ function App() {
 
     const isPdf =
       selectedFile.type === "application/pdf" ||
-      selectedFile.name
-        .toLowerCase()
-        .endsWith(".pdf");
+      selectedFile.name.toLowerCase().endsWith(".pdf");
 
     if (!isPdf) {
-      setUploadStatus(
-        "Please select a PDF file."
-      );
+      setUploadStatus("Please select a PDF file.");
       return;
     }
 
     setFile(selectedFile);
-
-    setUploadStatus(
-      `Selected: ${selectedFile.name}`
-    );
+    setUploadStatus(`Selected: ${selectedFile.name}`);
   };
 
   const handleDragOver = (event) => {
@@ -97,105 +114,78 @@ function App() {
   const handleDrop = (event) => {
     event.preventDefault();
     setDragging(false);
-
-    const droppedFile =
-      event.dataTransfer.files[0];
-
-    handleFile(droppedFile);
+    handleFile(event.dataTransfer.files[0]);
   };
 
   const handleUpload = async () => {
     if (!file) {
-      setUploadStatus(
-        "Please select a PDF first."
-      );
+      setUploadStatus("Please select a PDF first.");
       return;
     }
 
     const formData = new FormData();
-
     formData.append("file", file);
 
     setUploading(true);
-
-    setUploadStatus(
-      "Processing your document..."
-    );
+    setUploadStatus("Processing your document...");
 
     try {
-      const response = await fetch(
-        `${API_URL}/documents/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
+      const response = await fetch(`${API_URL}/documents/upload`, {
+        method: "POST",
+        body: formData,
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail ||
-          "Upload failed."
-        );
+        throw new Error(data.detail || "Upload failed.");
       }
 
-      setDocuments(
-        (previousDocuments) => {
-          const exists =
-            previousDocuments.some(
-              (document) =>
-                document.filename ===
-                data.filename
-            );
+      setDocuments((previousDocuments) => {
+        const exists = previousDocuments.some(
+          (document) => document.filename === data.filename
+        );
 
-          if (exists) {
-            return previousDocuments.map(
-              (document) =>
-                document.filename ===
-                  data.filename
-                  ? {
-                    ...document,
-                    chunks:
-                      data.chunks,
-                  }
-                  : document
-            );
-          }
-
-          return [
-            ...previousDocuments,
-            {
-              filename:
-                data.filename,
-              chunks:
-                data.chunks,
-            },
-          ];
+        if (exists) {
+          return previousDocuments.map((document) =>
+            document.filename === data.filename
+              ? {
+                  ...document,
+                  chunks: data.chunks,
+                }
+              : document
+          );
         }
-      );
+
+        return [
+          ...previousDocuments,
+          {
+            filename: data.filename,
+            chunks: data.chunks,
+          },
+        ];
+      });
 
       setUploadStatus(
         `✓ ${data.filename} uploaded successfully — ${data.chunks} chunks indexed.`
       );
 
       setFile(null);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } catch (error) {
-      setUploadStatus(
-        `Error: ${error.message}`
-      );
+      setUploadStatus(`Error: ${error.message}`);
     } finally {
       setUploading(false);
     }
   };
 
-  const handleDeleteDocument = async (
-    filename
-  ) => {
-    const confirmed =
-      window.confirm(
-        `Are you sure you want to delete "${filename}"?\n\nThis will remove the PDF and all of its indexed chunks from the RAG system.`
-      );
+  const handleDeleteDocument = async (filename) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${filename}"?\n\nThis will remove the PDF and all of its indexed chunks from the RAG system.`
+    );
 
     if (!confirmed) {
       return;
@@ -205,9 +195,7 @@ function App() {
 
     try {
       const response = await fetch(
-        `${API_URL}/documents?filename=${encodeURIComponent(
-          filename
-        )}`,
+        `${API_URL}/documents?filename=${encodeURIComponent(filename)}`,
         {
           method: "DELETE",
         }
@@ -216,329 +204,313 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail ||
-          "Failed to delete document."
-        );
+        throw new Error(data.detail || "Failed to delete document.");
       }
 
-      setDocuments(
-        (previousDocuments) =>
-          previousDocuments.filter(
-            (document) =>
-              document.filename !==
-              filename
-          )
+      setDocuments((previousDocuments) =>
+        previousDocuments.filter(
+          (document) => document.filename !== filename
+        )
       );
 
-      if (
-        file &&
-        file.name === filename
-      ) {
+      if (file && file.name === filename) {
         setFile(null);
       }
 
-      setUploadStatus(
-        `✓ ${filename} deleted successfully.`
-      );
+      setUploadStatus(`✓ ${filename} deleted successfully.`);
     } catch (error) {
-      setUploadStatus(
-        `Error deleting document: ${error.message}`
-      );
+      setUploadStatus(`Error deleting document: ${error.message}`);
     } finally {
       setDeletingFile("");
     }
   };
 
-  const handleAsk = async () => {
-    const trimmedQuestion =
-      question.trim();
+  const handleAsk = async (customQuestion) => {
+    const trimmedQuestion = (customQuestion ?? question).trim();
 
-    if (!trimmedQuestion) {
+    if (!trimmedQuestion || asking) {
       return;
     }
 
-    setMessages(
-      (previousMessages) => [
-        ...previousMessages,
-        {
-          role: "user",
-          content:
-            trimmedQuestion,
-        },
-      ]
-    );
+    setMessages((previousMessages) => [
+      ...previousMessages,
+      {
+        role: "user",
+        content: trimmedQuestion,
+      },
+    ]);
 
     setQuestion("");
     setAsking(true);
 
     try {
-      const response = await fetch(
-        `${API_URL}/ask`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            question:
-              trimmedQuestion,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: trimmedQuestion,
+        }),
+      });
 
-      const data =
-        await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail ||
-          "Question failed."
-        );
+        throw new Error(data.detail || "Question failed.");
       }
 
-      setMessages(
-        (previousMessages) => [
-          ...previousMessages,
-          {
-            role: "assistant",
-            content:
-              data.answer ||
-              "No answer was returned.",
-            sources:
-              data.sources || [],
-          },
-        ]
-      );
+      setMessages((previousMessages) => [
+        ...previousMessages,
+        {
+          role: "assistant",
+          content: data.answer || "No answer was returned.",
+          sources: data.sources || [],
+        },
+      ]);
     } catch (error) {
-      setMessages(
-        (previousMessages) => [
-          ...previousMessages,
-          {
-            role: "assistant",
-            content:
-              `Sorry, something went wrong: ${error.message}`,
-            sources: [],
-          },
-        ]
-      );
+      setMessages((previousMessages) => [
+        ...previousMessages,
+        {
+          role: "assistant",
+          content: `Sorry, something went wrong: ${error.message}`,
+          sources: [],
+        },
+      ]);
     } finally {
       setAsking(false);
     }
   };
 
-  const handleQuestionKeyDown = (
-    event
-  ) => {
-    if (
-      event.key === "Enter" &&
-      !event.shiftKey
-    ) {
+  const handleQuestionKeyDown = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       handleAsk();
     }
   };
 
+  const suggestedQuestions = [
+    "What is this document about?",
+    "What are the main projects mentioned?",
+    "Summarize the key points",
+    "What technologies are used?",
+  ];
+
+  const totalChunks = documents.reduce(
+    (total, document) => total + Number(document.chunks || 0),
+    0
+  );
+
   return (
     <div className="app">
-      <motion.header
-        className="hero"
-        initial={{
-          opacity: 0,
-          y: -25,
-        }}
-        animate={{
-          opacity: 1,
-          y: 0,
-        }}
-        transition={{
-          duration: 0.7,
-        }}
-      >
-        <div className="hero-badge">
-          AI DOCUMENT INTELLIGENCE
+      <div className="ambient ambient-one" />
+      <div className="ambient ambient-two" />
+
+      <header className="topbar">
+        <div className="brand">
+          <Logo size={50} />
+
+          <div className="brand-copy">
+            <div className="brand-name">
+              DocumentHub <span>AI</span>
+            </div>
+            <div className="brand-subtitle">
+              Intelligent document assistant
+            </div>
+          </div>
         </div>
 
-        <h1>
-          DocumentHub{" "}
-          <span>AI</span>
-        </h1>
+        <div className="header-actions">
+          <div className="status-pill">
+            <span className="status-dot" />
+            Online
+          </div>
 
-        <p>
-          Upload your documents and ask
-          questions using
-          retrieval-augmented generation.
-        </p>
-      </motion.header>
+          <button
+            className="theme-toggle"
+            onClick={() =>
+              setTheme((current) =>
+                current === "dark" ? "light" : "dark"
+              )
+            }
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? "☀️" : "🌙"}
+          </button>
+
+          <div className="ai-pill">
+            <span>✦</span>
+            RAG Assistant
+          </div>
+        </div>
+      </header>
 
       <main className="dashboard">
-        {documents.length > 0 && (
-          <motion.section
-            className="document-library"
-            initial={{
-              opacity: 0,
-              y: 20,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-            transition={{
-              duration: 0.5,
-            }}
-          >
-            <div className="library-header">
-              <div className="library-title">
-                <span className="library-icon">
-                  📚
-                </span>
+        <section className="hero-section">
+          <div className="hero-content">
+            <div className="hero-badge">
+              <span>✦</span>
+              AI DOCUMENT INTELLIGENCE
+            </div>
 
+            <h1>
+              Your documents.
+              <br />
+              <span>Smarter answers.</span>
+            </h1>
+
+            <p>
+              Upload PDFs, search their content, and ask questions
+              with retrieval-augmented generation.
+            </p>
+
+            <div className="hero-stats">
+              <div className="stat-card">
+                <div className="stat-icon purple">▤</div>
                 <div>
-                  <h2>
-                    Your Documents
-                  </h2>
+                  <strong>{documents.length}</strong>
+                  <span>Documents</span>
+                </div>
+              </div>
 
-                  <p>
-                    {documents.length}{" "}
-                    {documents.length ===
-                      1
-                      ? "document"
-                      : "documents"}{" "}
-                    indexed
-                  </p>
+              <div className="stat-card">
+                <div className="stat-icon teal">◇</div>
+                <div>
+                  <strong>{totalChunks}</strong>
+                  <span>Chunks indexed</span>
+                </div>
+              </div>
+
+              <div className="stat-card">
+                <div className="stat-icon blue">✦</div>
+                <div>
+                  <strong>{messages.filter((m) => m.role === "user").length}</strong>
+                  <span>Questions asked</span>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className="document-list">
-              {documents.map(
-                (
-                  document,
-                  index
-                ) => (
-                  <motion.div
-                    className="document-item"
-                    key={
-                      document.filename
-                    }
-                    initial={{
-                      opacity: 0,
-                      x: -15,
-                    }}
-                    animate={{
-                      opacity: 1,
-                      x: 0,
-                    }}
-                    transition={{
-                      delay:
-                        index * 0.05,
-                    }}
-                  >
-                    <div className="document-file-icon">
-                      📄
-                    </div>
+          <div className="hero-logo-wrap">
+            <div className="hero-glow" />
+            <Logo size={220} />
+            <div className="floating-card floating-card-one">
+              <span>AI</span>
+              Intelligent
+            </div>
+            <div className="floating-card floating-card-two">
+              <span>✓</span>
+              RAG Ready
+            </div>
+          </div>
+        </section>
 
-                    <div className="document-details">
-                      <strong
-                        title={
-                          document.filename
-                        }
-                      >
-                        {
-                          document.filename
-                        }
-                      </strong>
+        {documents.length > 0 && (
+          <motion.section
+            className="documents-section"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="section-heading">
+              <div>
+                <div className="section-eyebrow">LIBRARY</div>
+                <h2>Your Documents</h2>
+                <p>
+                  {documents.length}{" "}
+                  {documents.length === 1 ? "document" : "documents"}{" "}
+                  ready for intelligent search
+                </p>
+              </div>
 
-                      <span>
-                        ✓{" "}
-                        {
-                          document.chunks
-                        }{" "}
-                        chunks indexed
-                      </span>
-                    </div>
+              <div className="indexed-badge">
+                <span>✓</span>
+                All indexed
+              </div>
+            </div>
 
-                    <div className="document-status">
-                      ✓
-                    </div>
+            <div className="documents-grid">
+              {documents.map((document, index) => (
+                <motion.div
+                  className="document-card"
+                  key={document.filename}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <div className="document-top">
+                    <div className="pdf-icon">PDF</div>
 
                     <button
-                      className="delete-document-button"
+                      className="delete-button"
                       onClick={() =>
-                        handleDeleteDocument(
-                          document.filename
-                        )
+                        handleDeleteDocument(document.filename)
                       }
-                      disabled={
-                        deletingFile ===
-                        document.filename
-                      }
-                      title={`Delete ${document.filename}`}
+                      disabled={deletingFile === document.filename}
+                      title="Delete document"
                     >
-                      {deletingFile ===
-                        document.filename ? (
-                        <span className="delete-spinner" />
+                      {deletingFile === document.filename ? (
+                        <span className="mini-spinner" />
                       ) : (
                         "×"
                       )}
                     </button>
-                  </motion.div>
-                )
-              )}
+                  </div>
+
+                  <div className="document-name" title={document.filename}>
+                    {document.filename}
+                  </div>
+
+                  <div className="document-meta">
+                    <span>{document.chunks || 0} chunks</span>
+                    <span className="indexed-dot">
+                      <span />
+                      Indexed
+                    </span>
+                  </div>
+                </motion.div>
+              ))}
             </div>
           </motion.section>
         )}
 
-        <div className="content-grid">
+        <div className="main-grid">
           <motion.section
-            className="card upload-card"
-            initial={{
-              opacity: 0,
-              y: 30,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-            transition={{
-              delay: 0.15,
-              duration: 0.6,
-            }}
-            whileHover={{
-              y: -3,
-            }}
+            className="panel upload-panel"
+            initial={{ opacity: 0, y: 25 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
           >
-            <div className="card-icon">
-              📄
+            <div className="panel-heading">
+              <div className="panel-icon upload-icon">↑</div>
+              <div>
+                <div className="section-eyebrow">DOCUMENT PROCESSING</div>
+                <h2>Upload Document</h2>
+                <p>
+                  Add a PDF and let DocumentHub AI extract,
+                  chunk, and index it.
+                </p>
+              </div>
             </div>
 
-            <h2>
-              Upload a document
-            </h2>
-
-            <p className="card-description">
-              Upload a PDF and let
-              DocumentHub AI extract,
-              chunk, and index its
-              contents.
-            </p>
-
             <div
-              className={`drop-zone ${dragging
-                  ? "dragging"
-                  : ""
-                }`}
-              onDragOver={
-                handleDragOver
-              }
-              onDragLeave={
-                handleDragLeave
-              }
+              className={`drop-zone ${dragging ? "dragging" : ""}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
               onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
             >
-              <div className="drop-icon">
-                📄
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                hidden
+                onChange={(event) =>
+                  handleFile(event.target.files[0])
+                }
+              />
+
+              <div className="upload-cloud">
+                ↑
               </div>
 
               <h3>
@@ -547,350 +519,316 @@ function App() {
                   : "Drag & drop your PDF"}
               </h3>
 
-              <p>
-                or
-              </p>
+              <p>or click to browse your files</p>
 
-              <label className="choose-button">
-                Choose PDF
+              <button
+                type="button"
+                className="browse-button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+              >
+                Choose PDF File
+              </button>
 
-                <input
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  hidden
-                  onChange={(
-                    event
-                  ) =>
-                    handleFile(
-                      event.target
-                        .files[0]
-                    )
-                  }
-                />
-              </label>
+              <span className="upload-hint">
+                PDF files only · Secure document processing
+              </span>
+            </div>
 
+            <AnimatePresence>
               {file && (
                 <motion.div
                   className="selected-file"
-                  initial={{
-                    opacity: 0,
-                    scale: 0.95,
-                  }}
-                  animate={{
-                    opacity: 1,
-                    scale: 1,
-                  }}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
                 >
-                  <span>
-                    📎
-                  </span>
+                  <div className="selected-file-icon">PDF</div>
 
-                  <span>
-                    {file.name}
-                  </span>
+                  <div className="selected-file-info">
+                    <strong>{file.name}</strong>
+                    <span>
+                      {(file.size / 1024 / 1024).toFixed(2)} MB
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setFile(null);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = "";
+                      }
+                    }}
+                  >
+                    ×
+                  </button>
                 </motion.div>
               )}
-            </div>
+            </AnimatePresence>
 
             <button
               className="primary-button upload-button"
-              onClick={
-                handleUpload
-              }
-              disabled={
-                uploading ||
-                !file
-              }
+              onClick={handleUpload}
+              disabled={uploading || !file}
             >
               {uploading ? (
                 <>
                   <span className="spinner" />
-                  Processing...
+                  Processing document...
                 </>
               ) : (
-                "Upload PDF"
+                <>
+                  ↑
+                  Upload & Process
+                </>
               )}
             </button>
 
             {uploadStatus && (
               <motion.div
-                className={`upload-status ${uploadStatus.startsWith(
-                  "Error"
-                )
+                className={`upload-status ${
+                  uploadStatus.startsWith("Error")
                     ? "error"
                     : "success"
-                  }`}
-                initial={{
-                  opacity: 0,
-                  y: 8,
-                }}
-                animate={{
-                  opacity: 1,
-                  y: 0,
-                }}
+                }`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
               >
-                {uploadStatus}
+                <span>
+                  {uploadStatus.startsWith("Error") ? "!" : "✓"}
+                </span>
+                {uploadStatus.replace(/^[✓!]\s*/, "")}
               </motion.div>
             )}
           </motion.section>
 
           <motion.section
-            className="card chat-card"
-            initial={{
-              opacity: 0,
-              y: 30,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-            transition={{
-              delay: 0.25,
-              duration: 0.6,
-            }}
+            className="panel chat-panel"
+            initial={{ opacity: 0, y: 25 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
           >
-            <div className="card-icon">
-              💬
+            <div className="chat-header">
+              <div className="panel-heading">
+                <div className="panel-icon chat-icon">✦</div>
+                <div>
+                  <div className="section-eyebrow">AI ASSISTANT</div>
+                  <h2>Ask your document</h2>
+                  <p>
+                    Get grounded answers from your indexed documents.
+                  </p>
+                </div>
+              </div>
+
+              {messages.length > 0 && (
+                <button
+                  className="clear-chat"
+                  onClick={() => setMessages([])}
+                >
+                  Clear chat
+                </button>
+              )}
             </div>
 
-            <h2>
-              Ask your document
-            </h2>
-
-            <p className="card-description">
-              Ask questions and get
-              answers based on the
-              information inside your
-              documents.
-            </p>
-
-            <div className="chat-messages">
-              {messages.length === 0 &&
-                !asking && (
-                  <div className="empty-chat">
-                    <div className="empty-chat-icon">
-                      ✨
-                    </div>
-
-                    <h3>
-                      Ready to answer
-                    </h3>
-
-                    <p>
-                      Upload one or more
-                      documents, then ask
-                      a question.
-                    </p>
+            <div className="chat-body">
+              {messages.length === 0 && !asking ? (
+                <div className="empty-chat">
+                  <div className="empty-logo">
+                    <Logo size={70} />
                   </div>
-                )}
 
-              {messages.map(
-                (
-                  message,
-                  index
-                ) => (
-                  <motion.div
-                    className={`message ${message.role}`}
-                    key={index}
-                    initial={{
-                      opacity: 0,
-                      y: 12,
-                    }}
-                    animate={{
-                      opacity: 1,
-                      y: 0,
-                    }}
-                    transition={{
-                      duration: 0.3,
-                    }}
-                  >
-                    <div className="message-label">
-                      {message.role ===
-                        "user" ? (
-                        <>
-                          <span>
-                            👤
-                          </span>
-                          You
-                        </>
-                      ) : (
-                        <>
-                          <span>
-                            ✨
-                          </span>
-                          DocumentHub AI
-                        </>
-                      )}
+                  <h3>Ready to answer</h3>
+
+                  <p>
+                    Upload a document and ask anything about
+                    its contents.
+                  </p>
+
+                  {documents.length > 0 && (
+                    <div className="suggestions">
+                      {suggestedQuestions.map((item) => (
+                        <button
+                          key={item}
+                          onClick={() => handleAsk(item)}
+                        >
+                          <span>✦</span>
+                          {item}
+                        </button>
+                      ))}
                     </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {messages.map((message, index) => (
+                    <motion.div
+                      className={`message-row ${message.role}`}
+                      key={`${message.role}-${index}`}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                    >
+                      <div className="message-avatar">
+                        {message.role === "user" ? (
+                          "You"
+                        ) : (
+                          <Logo size={30} />
+                        )}
+                      </div>
 
-                    <div className="message-content">
-                      {message.role ===
-                        "assistant" ? (
-                        <>
-                          <ReactMarkdown>
-                            {
-                              message.content
-                            }
-                          </ReactMarkdown>
+                      <div className="message-wrapper">
+                        <div className="message-name">
+                          {message.role === "user"
+                            ? "You"
+                            : "DocumentHub AI"}
+                        </div>
+
+                        <div className="message-bubble">
+                          {message.role === "assistant" ? (
+                            <ReactMarkdown>
+                              {message.content}
+                            </ReactMarkdown>
+                          ) : (
+                            <p>{message.content}</p>
+                          )}
 
                           {message.sources &&
-                            message.sources
-                              .length >
-                            0 && (
+                            message.sources.length > 0 && (
                               <div className="sources">
-                                <div className="sources-title">
-                                  📚 Sources
+                                <div className="sources-heading">
+                                  <span>▤</span>
+                                  Sources
                                 </div>
 
-                                <div className="sources-list">
+                                <div className="sources-grid">
                                   {message.sources.map(
-                                    (
-                                      source,
-                                      sourceIndex
-                                    ) => (
+                                    (source, sourceIndex) => (
                                       <div
-                                        className="source-item"
-                                        key={
-                                          sourceIndex
-                                        }
+                                        className="source-card"
+                                        key={sourceIndex}
                                       >
-                                        <span className="source-icon">
-                                          📄
-                                        </span>
+                                        <div className="source-file-icon">
+                                          PDF
+                                        </div>
 
-                                        <span className="source-text">
-                                          {
-                                            source.filename
-                                          }
-
-                                          {" · "}
-
-                                          Chunk{" "}
-
-                                          {
-                                            source.chunk
-                                          }
-                                        </span>
+                                        <div>
+                                          <strong>
+                                            {source.filename}
+                                          </strong>
+                                          <span>
+                                            Chunk {source.chunk}
+                                          </span>
+                                        </div>
                                       </div>
                                     )
                                   )}
                                 </div>
                               </div>
                             )}
-                        </>
-                      ) : (
-                        <p>
-                          {
-                            message.content
-                          }
-                        </p>
-                      )}
-                    </div>
-                  </motion.div>
-                )
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+
+                  {asking && (
+                    <motion.div
+                      className="message-row assistant"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                    >
+                      <div className="message-avatar">
+                        <Logo size={30} />
+                      </div>
+
+                      <div className="message-wrapper">
+                        <div className="message-name">
+                          DocumentHub AI
+                        </div>
+
+                        <div className="thinking-bubble">
+                          <span className="thinking-dot" />
+                          <span className="thinking-dot" />
+                          <span className="thinking-dot" />
+                          <span className="thinking-text">
+                            Searching your documents...
+                          </span>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </>
               )}
 
-              {asking && (
-                <motion.div
-                  className="message assistant thinking-message"
-                  initial={{
-                    opacity: 0,
-                  }}
-                  animate={{
-                    opacity: 1,
-                  }}
-                >
-                  <div className="message-label">
-                    <span>
-                      ✨
-                    </span>
-
-                    DocumentHub AI
-                  </div>
-
-                  <div className="thinking">
-                    <div className="thinking-dots">
-                      <span />
-                      <span />
-                      <span />
-                    </div>
-
-                    <span>
-                      Searching your
-                      documents...
-                    </span>
-                  </div>
-                </motion.div>
-              )}
-
-              <div
-                ref={chatEndRef}
-              />
+              <div ref={chatEndRef} />
             </div>
 
-            <div className="question-area">
+            {documents.length > 0 && (
+              <div className="chat-suggestions">
+                {suggestedQuestions.slice(0, 3).map((item) => (
+                  <button
+                    key={item}
+                    onClick={() => handleAsk(item)}
+                    disabled={asking}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="question-box">
               <textarea
                 value={question}
                 onChange={(event) =>
-                  setQuestion(
-                    event.target.value
-                  )
+                  setQuestion(event.target.value)
                 }
-                onKeyDown={
-                  handleQuestionKeyDown
-                }
-                placeholder="Ask something about your document..."
-                rows={4}
+                onKeyDown={handleQuestionKeyDown}
+                placeholder="Ask anything about your documents..."
+                rows={2}
+                disabled={asking}
               />
 
               <button
-                className="primary-button ask-button"
-                onClick={handleAsk}
-                disabled={
-                  asking ||
-                  !question.trim()
-                }
+                className="send-button"
+                onClick={() => handleAsk()}
+                disabled={asking || !question.trim()}
+                aria-label="Ask question"
               >
                 {asking ? (
-                  <>
-                    <span className="spinner" />
-                    Thinking...
-                  </>
+                  <span className="spinner" />
                 ) : (
-                  "Ask Question →"
+                  "➤"
                 )}
               </button>
+            </div>
+
+            <div className="chat-footer">
+              <span>Enter to send</span>
+              <span>Shift + Enter for new line</span>
             </div>
           </motion.section>
         </div>
       </main>
 
-      <footer>
-        <span>
-          Built with
+      <footer className="footer">
+        <div className="footer-brand">
+          <Logo size={32} />
+          <span>
+            DocumentHub <strong>AI</strong>
+          </span>
+        </div>
+
+        <div className="footer-tech">
+          <span>React</span>
+          <span>FastAPI</span>
+          <span>ChromaDB</span>
+          <span>Gemini</span>
+        </div>
+
+        <span className="footer-copy">
+          Intelligent document understanding
         </span>
-
-        <strong>
-          React
-        </strong>
-
-        <span>·</span>
-
-        <strong>
-          FastAPI
-        </strong>
-
-        <span>·</span>
-
-        <strong>
-          ChromaDB
-        </strong>
-
-        <span>·</span>
-
-        <strong>
-          Gemini
-        </strong>
       </footer>
     </div>
   );
